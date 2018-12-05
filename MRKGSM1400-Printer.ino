@@ -11,14 +11,13 @@
  created 11 April 2018
  by Darren Jeacocke
 
- {
-  "vin":"1ZVHT80N175369058"
-  "color":"Forest Green",
-  "make":"Ford",
-  "model":"Mustang",
-  "stock":"75369058",
-  "vin":"1ZVHT80N175369058",
-  "year":2007
+{
+   "vin":"1ZVHT80N175369058",
+   "stock":"75369058",
+   "color":"Forest Green",
+   "make":"Ford",
+   "model":"Mustang",
+   "year":2007
 }
 */
 
@@ -41,10 +40,9 @@ const char GPRS_PASSWORD[] = SECRET_GPRS_PASSWORD;
 const char server[] = "ah2fpu2q2t4m4.iot.us-east-1.amazonaws.com";
 const char statusTopic[] = "printer/status";
 const char printTopic[] = "printer/print";
+const char updateTemplateTopic[] = "template/update";
 const char clientId[] = "CPHPrinter1";
-String TEST_Template = "~CT~~CD,~CC^~CT~^XA~TA000~JSN^LT0^MNW^MTT^POI^PMN^LH0,0^JMA^PR4,4~SD30^JUS^LRN^CI0^XZ^XA^MMT^PW609^LL1218^LS0**BOTTOM LARGE MAC QR**^FO160,850^BQ,2,10^FDHM,A{mac}^FS**BOTTOM SMALL MAC**^FT135,930^A0R,16,16^FB220,1,0,C^FD{mac}^FS^PQ1,0,1,Y^XZ";
-StaticJsonBuffer<500> jsonBuffer;
-char inData[500];
+StaticJsonBuffer<1024> jsonBuffer;
 
 GSMSSLClient gsmClient;
 GSMSecurity profile;
@@ -54,19 +52,47 @@ GSM gsmAccess;
 PubSubClient mqttClient(server, 8883, gsmClient);
 
 void callback(char* topic, byte* payload, unsigned int length) {
+  
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
+  Serial.println();
+  
+  if(String(topic) == printTopic) {
+    sendPrint(payload, length);
+  }
+  else if(String(topic) == updateTemplateTopic) {
+    updateTemplate(payload, length);
+  }
+}
+
+void updateTemplate(byte* payload, unsigned int length) {
+  
+}
+
+void sendPrint(byte* payload, unsigned int length) {
+
+  char inData[500];
+  String tempPrintTemplate = printTemplate;
+  
   for (int i=0;i<length;i++) {
-    Serial.print((char)payload[i]);
     inData[i] = (char)payload[i];
+  }
+
+  for (int i=0;i<length;i++) {
+    Serial.print(inData[i]);
   }
   Serial.println();
 
   JsonObject& root = jsonBuffer.parseObject(inData);
-  printTemplate.replace("{vin}", root["vin"]); 
+  tempPrintTemplate.replace("{vin}", root["vin"]); 
+  tempPrintTemplate.replace("{stock}", root["stock"]); 
+  tempPrintTemplate.replace("{year}", root["year"]); 
+  tempPrintTemplate.replace("{make}", root["make"]); 
+  tempPrintTemplate.replace("{model}", root["model"]); 
+  tempPrintTemplate.replace("{color}", root["color"]); 
 
-  Serial1.print(printTemplate);
+  Serial1.print(tempPrintTemplate);
 }
 
 void reconnect() {
@@ -93,10 +119,13 @@ void reconnect() {
 }
 
 void setup() {
+  // set up LED
   pinMode(LED_BUILTIN, OUTPUT);
+  
   // initialize serial communications and wait for port to open:
   Serial.begin(9600);
   Serial1.begin(9600);
+  
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
@@ -133,16 +162,7 @@ void setup() {
 unsigned long prevNow = millis();
 
 void loop() {
-//  unsigned long now = millis();
-//  if (now - prevNow >= 30000) {
-//    prevNow = now;
-//    if (mqttClient.publish(statusTopic, "{d: { status: \"connected!\"}")) {
-//      Serial.println("Publish ok");
-//    } else {
-//      Serial.println("Publish failed");
-//    }
-//  }
-
+  
   if (!mqttClient.connected()) {
     reconnect();
   }
