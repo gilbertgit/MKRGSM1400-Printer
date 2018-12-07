@@ -25,6 +25,7 @@
 #include <MKRGSM.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <Thread.h>
 
 #include "arduino_secrets.h"
 #include "template.h"
@@ -42,6 +43,7 @@ const char statusTopic[] = "printer/status";
 const char printTopic[] = "printer/print";
 const char updateTemplateTopic[] = "template/update";
 const char clientId[] = "CPHPrinter1";
+
 StaticJsonBuffer<1024> jsonBuffer;
 
 GSMSSLClient gsmClient;
@@ -49,9 +51,11 @@ GSMSecurity profile;
 GPRS gprs;
 GSM gsmAccess;
 
+Thread printThread = Thread();
+
 PubSubClient mqttClient(server, 8883, gsmClient);
 
-void callback(char* topic, byte* payload, unsigned int length) {
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
   
   Serial.print("Message arrived [");
   Serial.print(topic);
@@ -67,7 +71,25 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void updateTemplate(byte* payload, unsigned int length) {
-  
+
+  char inData[length];
+  for (int i=0;i<length;i++) {
+    inData[i] = (char)payload[i];
+  }
+
+  // DEBUG
+  for (int i=0;i<length;i++) {
+    Serial.print(inData[i]);
+  }
+  Serial.println();
+
+//  JsonObject& root = jsonBuffer.parseObject(inData);
+//  String newTemplate = root["template"];
+
+  printTemplate = String(inData);
+
+  //  DEBUG
+  Serial.print(printTemplate);
 }
 
 void sendPrint(byte* payload, unsigned int length) {
@@ -79,6 +101,7 @@ void sendPrint(byte* payload, unsigned int length) {
     inData[i] = (char)payload[i];
   }
 
+  // DEBUG
   for (int i=0;i<length;i++) {
     Serial.print(inData[i]);
   }
@@ -95,6 +118,10 @@ void sendPrint(byte* payload, unsigned int length) {
   Serial1.print(tempPrintTemplate);
 }
 
+void sendPrintCB(){
+
+}
+
 void reconnect() {
   // Loop until we're reconnected
   while (!mqttClient.connected()) {
@@ -106,6 +133,7 @@ void reconnect() {
       mqttClient.publish(statusTopic, "{d: { status: \"connected!\"}");
       // ... and resubscribe
       mqttClient.subscribe(printTopic);
+      mqttClient.subscribe(updateTemplateTopic);
       digitalWrite(LED_BUILTIN, HIGH);
     } else {
       Serial.print("failed, rc=");
@@ -141,7 +169,7 @@ void setup() {
         (gprs.attachGPRS(GPRS_APN, GPRS_LOGIN, GPRS_PASSWORD) == GPRS_READY)) {
       connected = true;
     } else {
-      Serial.println("Not connected");
+      Serial.println("NETWORK Not connected");
       delay(1000);
     }
   }
@@ -156,7 +184,13 @@ void setup() {
   profile.setCipher(SSL_CIPHER_AUTO);
   gsmClient.setSecurityProfile(profile);
 
-  mqttClient.setCallback(callback);
+  mqttClient.setCallback(mqttCallback);
+
+  // Setup print Thread
+  printThread.setInterval(100);
+  printThread.enabled = true;
+  printThread.onRun(sendPrintCB);
+
 }
 
 unsigned long prevNow = millis();
